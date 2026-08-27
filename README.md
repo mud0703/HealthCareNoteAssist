@@ -1,40 +1,146 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
+# HealthCareNoteAssist
 
-## Getting Started
+AI-powered clinical consultation note assistant. Paste rough doctor notes, get a structured medical summary, an action checklist, and a patient-friendly email — streamed in seconds.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## What it does
+
+1. Doctor fills in patient name, visit date, specialty, and free-text consultation notes
+2. Notes are sent to GPT-4o-mini via a streaming FastAPI endpoint
+3. Three sections stream back in real time:
+   - **Summary of visit** — structured record-ready notes
+   - **Next steps** — numbered action checklist
+   - **Draft patient email** — plain-language, personalised to the patient
+
+Output can be copied to clipboard or downloaded as `.md`.
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 16 (Pages Router), TypeScript, Tailwind CSS |
+| Auth + Billing | Clerk (`<Protect>`, `<PricingTable>`, JWT verification) |
+| Backend | FastAPI (Python), SSE streaming via `StreamingResponse` |
+| AI | OpenAI `gpt-4o-mini` with specialty-aware system prompts |
+| Python deps | `uv` + `pyproject.toml` |
+| Dev proxy | Next.js `rewrites()` → `http://localhost:8001` |
+
+---
+
+## Project structure
+
+```
+HealthCareNoteAssist/
+├── pages/
+│   ├── _app.tsx          # ClerkProvider wrapper
+│   ├── _document.tsx     # HTML shell + meta
+│   ├── index.tsx         # Landing page
+│   └── product.tsx       # Protected consultation page
+├── components/
+│   └── ConsultationForm.tsx   # Form + SSE client + markdown output
+├── api/
+│   └── index.py          # FastAPI app (consultation endpoint + health check)
+├── styles/
+│   └── globals.css       # Tailwind + .markdown-content prose styles
+├── next.config.ts        # Rewrites /api/* → FastAPI
+└── pyproject.toml        # Python dependencies (uv)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+## Local setup
 
-[API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+### Prerequisites
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) instead of React pages.
+- Node.js 18+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- A [Clerk](https://clerk.com) account (free)
+- An [OpenAI](https://platform.openai.com) API key
 
-This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 1. Clone and install
 
-## Learn More
+```bash
+# Frontend
+npm install
 
-To learn more about Next.js, take a look at the following resources:
+# Backend
+uv sync
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
+### 2. Environment variables
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Create `.env.local` in the project root:
 
-## Deploy on Vercel
+```env
+# Clerk — dashboard.clerk.com → Configure → API Keys
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+CLERK_JWKS_URL=https://<your-clerk-app>.clerk.accounts.dev/.well-known/jwks.json
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# OpenAI — platform.openai.com
+OPENAI_API_KEY=sk-proj-...
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+### 3. Clerk Billing setup
+
+In the [Clerk Dashboard](https://dashboard.clerk.com):
+
+1. Go to **Billing** → **Plans**
+2. Create a plan with slug `premium_subscription`
+3. Set a price (or $0 for testing) and publish it
+4. Enable Billing on your application
+
+This activates the `<Protect plan="premium_subscription">` gate and the `<PricingTable>` on the product page.
+
+### 4. Run dev servers
+
+**Terminal 1 — Next.js:**
+```bash
+npm run dev
+```
+
+**Terminal 2 — FastAPI:**
+```bash
+uv run uvicorn api.index:app --reload --port 8001
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+---
+
+## How auth works
+
+```
+Browser → Clerk sign-in → JWT token
+       → POST /api/consultation (Authorization: Bearer <jwt>)
+       → Next.js rewrite → FastAPI :8001
+       → fastapi-clerk-auth verifies JWT via JWKS
+       → OpenAI stream → SSE back to browser
+```
+
+The `<Protect plan="premium_subscription">` component in `pages/product.tsx` gates access to the consultation form. Unauthenticated or free-tier users see the pricing table instead.
+
+---
+
+## Roadmap
+
+| Status | Feature |
+|---|---|
+| ✅ | Clerk auth + JWT-verified API |
+| ✅ | SSE streaming output |
+| ✅ | Specialty-aware prompts (GP, Cardiology, Pediatrics, Psychiatry, Orthopedics) |
+| ✅ | Clerk Billing gate + pricing table |
+| ✅ | Copy / Download `.md` output |
+| 🔜 | Voice input (Web Speech API / Whisper) |
+| 🔜 | Image upload — handwritten notes via GPT-4o vision |
+| 🔜 | Docker + AWS Lambda container deployment |
+
+---
+
+## Disclaimer
+
+Demo only — not HIPAA compliant. Do not enter real patient data.
