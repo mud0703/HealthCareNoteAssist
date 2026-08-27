@@ -82,6 +82,7 @@ def event_stream(stream):
 
 
 @app.post("/api/consultation")
+@app.post("/consultation")
 def consultation_summary(
     visit: Visit,
     creds: HTTPAuthorizationCredentials = Depends(clerk_guard),
